@@ -1,9 +1,8 @@
-
 import React, { useState } from 'react';
 import { Medication, LogEntry, VitalEntry, MoodEntry } from '../types';
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Printer, CheckCircle2, FileText, Loader2, Sparkles, Download } from 'lucide-react';
+import { Printer, CheckCircle2, FileText, Loader2, Sparkles, Copy, Share2 } from 'lucide-react';
 import { generateHealthReport } from '../services/geminiService';
 
 interface HistoryViewProps {
@@ -52,6 +51,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ medications, logs, vitals = [
     const title = "MediMind Health Report";
     const date = new Date().toLocaleDateString();
     
+    // Process markdown to basic HTML for the report if present
+    let reportHtml = '';
+    if (report) {
+      reportHtml = `
+        <div class="stat-box" style="background: #f1f5f9; border-left: 4px solid #6366f1;">
+          <h2>AI Doctor's Analysis</h2>
+          <div style="white-space: pre-wrap; font-family: sans-serif; line-height: 1.6;">${report}</div>
+        </div>
+      `;
+    }
+
     const content = `
       <!DOCTYPE html>
       <html>
@@ -93,6 +103,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ medications, logs, vitals = [
               </div>
             </div>
           </div>
+          
+          ${reportHtml}
 
           <h2>Detailed Activity Log (Last 30 Days)</h2>
           <table>
@@ -141,6 +153,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ medications, logs, vitals = [
     setGenerating(false);
   };
 
+  const handleCopyReport = () => {
+    if (report) {
+      navigator.clipboard.writeText(report);
+      alert("Report copied to clipboard!");
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Summary Score Card */}
@@ -163,16 +182,25 @@ const HistoryView: React.FC<HistoryViewProps> = ({ medications, logs, vitals = [
           <h3 className="font-bold text-slate-800 flex items-center gap-2">
             <Sparkles size={18} className="text-indigo-500" /> AI Doctor's Report
           </h3>
-          {!report && (
-             <button 
+          <div className="flex gap-2">
+            {report && (
+              <button 
+                onClick={handleCopyReport}
+                className="text-xs bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1"
+                title="Copy to Clipboard"
+              >
+                <Copy size={12} /> Copy
+              </button>
+            )}
+            <button 
               onClick={handleGenerateReport} 
               disabled={generating}
               className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-bold transition-colors disabled:opacity-50 flex items-center gap-1"
-             >
-               {generating ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
-               Generate Summary
-             </button>
-          )}
+            >
+              {generating ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+              {report ? 'Regenerate' : 'Generate Summary'}
+            </button>
+          </div>
         </div>
         <div className="p-6">
           {generating ? (
@@ -185,14 +213,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({ medications, logs, vitals = [
               <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 text-slate-700 leading-relaxed whitespace-pre-wrap">
                 {report}
               </div>
-              <button onClick={() => setReport(null)} className="text-xs text-slate-400 mt-2 hover:text-indigo-500">
-                Clear Report
-              </button>
+              <div className="flex justify-between items-center mt-2">
+                 <p className="text-xs text-slate-400 italic">This is an AI-generated summary based on your logs.</p>
+                 <button onClick={() => setReport(null)} className="text-xs text-slate-400 hover:text-indigo-500">
+                   Clear Report
+                 </button>
+              </div>
             </div>
           ) : (
-            <p className="text-sm text-slate-500 text-center py-2">
-              Generate a professional summary of your adherence and vitals for your next doctor's visit.
-            </p>
+            <div className="text-center py-6">
+              <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-3 text-indigo-400">
+                <FileText size={24} />
+              </div>
+              <p className="text-sm text-slate-500 font-medium">
+                Generate a professional summary of your adherence and vitals.
+              </p>
+              <p className="text-xs text-slate-400 mt-1">Useful for sharing with your healthcare provider.</p>
+            </div>
           )}
         </div>
       </div>

@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { Medication, FrequencyType, DrugInfo, LogEntry } from '../types';
-import { Pill, Clock, Calendar, Info, Check, X, AlertCircle, Database, PlusCircle, Pencil, Hourglass, Bell, AlarmClock } from 'lucide-react';
+import { Pill, Clock, Calendar, Info, Check, X, AlertCircle, Database, PlusCircle, Pencil, Hourglass, Bell, AlarmClock, Settings, Save, RefreshCw } from 'lucide-react';
 import { getDrugInfo } from '../services/geminiService';
 import { format, differenceInDays } from 'date-fns';
 
@@ -11,16 +10,22 @@ interface MedicationCardProps {
   onLog: (medId: string, status: 'TAKEN' | 'SKIPPED', time?: string) => void;
   onRefill: (medId: string, newStock: number) => void;
   onEdit: (med: Medication) => void;
+  onUpdate?: (med: Medication) => void;
   onSnooze: (medId: string, time: string, minutes: number) => void;
   todayLogs: LogEntry[];
   snoozeUntil?: number; // Timestamp if snoozed
 }
 
-const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, onLog, onRefill, onEdit, onSnooze, todayLogs, snoozeUntil }) => {
+const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, onLog, onRefill, onEdit, onUpdate, onSnooze, todayLogs, snoozeUntil }) => {
   const [info, setInfo] = useState<DrugInfo | null>(null);
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showSnoozeOptions, setShowSnoozeOptions] = useState<string | null>(null); // Stores the time string currently being snoozed
+  
+  // Settings State
+  const [editThreshold, setEditThreshold] = useState(medication.lowStockThreshold);
+  const [editStock, setEditStock] = useState(medication.currentStock);
 
   const handleFetchInfo = async () => {
     if (info) {
@@ -32,6 +37,26 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
     setInfo(data);
     setLoadingInfo(false);
     setShowInfo(true);
+  };
+  
+  const toggleSettings = () => {
+    if (!showSettings) {
+      setEditThreshold(medication.lowStockThreshold);
+      setEditStock(medication.currentStock);
+    }
+    setShowSettings(!showSettings);
+    setShowInfo(false);
+  };
+
+  const handleSaveSettings = () => {
+    if (onUpdate) {
+      onUpdate({ 
+        ...medication, 
+        currentStock: Number(editStock), 
+        lowStockThreshold: Number(editThreshold) 
+      });
+    }
+    setShowSettings(false);
   };
 
   const handleRefillClick = () => {
@@ -63,6 +88,18 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
   };
 
   const isLowStock = medication.currentStock <= medication.lowStockThreshold;
+  
+  // Calculate stock status color
+  let stockStatusColor = 'bg-emerald-500';
+  let stockStatusLabel = 'High Stock';
+  
+  if (isLowStock) {
+    stockStatusColor = 'bg-red-500';
+    stockStatusLabel = 'Low Stock';
+  } else if (medication.currentStock <= (medication.lowStockThreshold * 3)) {
+     stockStatusColor = 'bg-amber-400';
+     stockStatusLabel = 'Medium Stock';
+  }
   
   // Robust check for future start date using local date string comparison
   const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -108,7 +145,22 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
             {!['pill', 'tablet', 'bottle', 'syringe'].includes(medication.icon) && <Pill size={24} />}
           </div>
           <div>
-            <h3 className="font-bold text-lg text-slate-800">{medication.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-lg text-slate-800">{medication.name}</h3>
+              {/* Visual Indicator for Stock Level */}
+              {isLowStock ? (
+                <AlertCircle 
+                  size={16} 
+                  className="text-red-500 fill-red-50" 
+                  title={`Low Stock: ${medication.currentStock} units remaining`}
+                />
+              ) : (
+                <div 
+                  className={`w-2.5 h-2.5 rounded-full ${stockStatusColor} ring-2 ring-white shadow-sm`} 
+                  title={`${stockStatusLabel}: ${medication.currentStock} units remaining`}
+                />
+              )}
+            </div>
             <p className="text-sm text-slate-500">{medication.dosage} • {medication.frequency}</p>
           </div>
         </div>
@@ -120,11 +172,19 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
             )}
             <button 
               onClick={handleFetchInfo}
-              className="text-slate-400 hover:text-blue-500 transition-colors p-1"
+              className={`transition-colors p-1 ${showInfo ? 'text-blue-500' : 'text-slate-400 hover:text-blue-500'}`}
               title="Get AI Info"
               type="button"
             >
               <Info size={20} />
+            </button>
+            <button 
+              onClick={toggleSettings}
+              className={`transition-colors p-1 ml-1 ${showSettings ? 'text-blue-500' : 'text-slate-400 hover:text-blue-500'}`}
+              title="Refill Settings"
+              type="button"
+            >
+              <Settings size={20} />
             </button>
         </div>
       </div>
@@ -150,6 +210,55 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
           ) : (
             <p className="text-red-400">Could not retrieve info.</p>
           )}
+        </div>
+      )}
+
+      {showSettings && (
+        <div className="mb-4 bg-white p-4 rounded-xl text-sm border-2 border-blue-100 shadow-sm animate-fadeIn">
+          <div className="flex items-center justify-between mb-4">
+             <h4 className="font-bold text-slate-700 flex items-center gap-2">
+               <Settings size={16} className="text-blue-500" />
+               Refill Reminder Settings
+             </h4>
+             <button onClick={toggleSettings} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-400 mb-1">Current Stock</label>
+              <input 
+                type="number" 
+                value={editStock}
+                onChange={(e) => setEditStock(Number(e.target.value))}
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-400 mb-1">Alert Below</label>
+              <input 
+                type="number" 
+                value={editThreshold}
+                onChange={(e) => setEditThreshold(Number(e.target.value))}
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700"
+              />
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 mb-4 text-xs text-slate-500 bg-slate-50 p-2 rounded">
+            <Info size={14} />
+            <span>
+              {dailyUsage > 0 
+                ? `At current dose, stock alert will trigger in ~${Math.floor((editStock - editThreshold) / dailyUsage)} days.` 
+                : 'Stock alerts will appear when your supply drops below the limit.'}
+            </span>
+          </div>
+
+          <button 
+            onClick={handleSaveSettings}
+            className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center justify-center gap-2"
+          >
+            <Save size={16} /> Save Settings
+          </button>
         </div>
       )}
 
@@ -188,8 +297,9 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
              </div>
            )}
            {medication.refillDate && (
-             <div className="flex items-center gap-1 col-span-2">
-               <span className="text-slate-400">Last refill: {format(new Date(medication.refillDate + 'T00:00'), 'MMM do')}</span>
+             <div className="flex items-center gap-1.5 col-span-2 text-slate-500">
+               <RefreshCw size={12} className="text-slate-400" />
+               <span>Last Refill: <span className="font-medium text-slate-600">{format(new Date(medication.refillDate + 'T00:00'), 'MMM do, yyyy')}</span></span>
              </div>
            )}
         </div>

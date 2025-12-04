@@ -251,7 +251,7 @@ export const generateHealthReport = async (
   if (!apiKey) return null;
 
   // Prepare data summary for the prompt
-  const medSummary = medications.map(m => `${m.name} (${m.dosage})`).join(', ');
+  const medSummary = medications.map(m => `${m.name} (${m.dosage}) - ${m.frequency}`).join(', ');
   
   // Calculate simplistic adherence for context
   const takenCount = logs.filter(l => l.status === 'TAKEN').length;
@@ -259,25 +259,30 @@ export const generateHealthReport = async (
   const totalLogs = logs.length;
   const adherence = totalLogs > 0 ? Math.round((takenCount / totalLogs) * 100) : 0;
 
-  // Recent vitals (last 5)
-  const recentVitals = vitals.slice(-5).map(v => `${v.type}: ${v.value} ${v.unit} (${v.dateStr})`).join('; ');
+  // Recent vitals (last 10)
+  const recentVitals = vitals.slice(-10).map(v => `${v.type}: ${v.value} ${v.unit} (${v.dateStr})`).join('; ');
   
   // Recent moods
-  const recentMoods = moods.slice(-5).map(m => `${m.type} (${m.dateStr})`).join('; ');
+  const recentMoods = moods.slice(-10).map(m => `${m.type} (${m.dateStr})`).join('; ');
 
   const prompt = `
-    Act as a professional medical assistant generating a report for a doctor.
+    Act as a professional medical assistant generating a health status report for a doctor.
     
     Patient Data:
     - Current Medications: ${medSummary}
-    - Recent Adherence Rate: ${adherence}% (${takenCount} taken, ${skippedCount} skipped recorded events)
+    - Adherence Rate: ${adherence}% (${takenCount} taken, ${skippedCount} skipped in recent logs)
     - Recent Vitals: ${recentVitals || 'None recorded'}
     - Recent Mood/Symptoms: ${recentMoods || 'None recorded'}
 
     Task:
-    Write a concise, professional summary paragraph (approx 100-150 words) that a doctor can quickly read to understand the patient's status. 
-    Highlight any potential concerns (like low adherence or concerning vitals if any) or praise good consistency. 
-    Do not give medical advice, just summarize the data trends. Use Markdown formatting.
+    Write a structured, professional report.
+    Use the following sections (use Markdown headers like ##):
+    1. **Patient Summary**: Brief overview of status and adherence.
+    2. **Medication Analysis**: Comments on consistency and medication list.
+    3. **Vitals & Wellness**: Analysis of recorded vitals/moods (if any).
+    4. **Recommendations**: 2-3 General health tips or things to discuss with the doctor based on the data.
+    
+    Keep the tone clinical but easy to read.
   `;
 
   try {

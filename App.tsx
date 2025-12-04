@@ -514,6 +514,7 @@ const App: React.FC = () => {
             onLogMedication={handleLogMedication}
             onRefillMedication={handleRefillMedication}
             onEditMedication={handleEditClick}
+            onUpdateMedication={handleUpdateMedication}
             onLogMood={handleLogMood}
             onSnoozeMedication={handleSnoozeMedication}
             userName={activeProfile.name}

@@ -13,12 +13,13 @@ interface DashboardProps {
   onLogMedication: (medId: string, status: 'TAKEN' | 'SKIPPED', time?: string) => void;
   onRefillMedication: (medId: string, newStock: number) => void;
   onEditMedication: (med: Medication) => void;
+  onUpdateMedication: (med: Medication) => void;
   onLogMood: (mood: MoodType) => void;
   onSnoozeMedication: (medId: string, time: string, minutes: number) => void;
   userName: string;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ medications, logs, moods, snoozedItems, onDeleteMedication, onLogMedication, onRefillMedication, onEditMedication, onLogMood, onSnoozeMedication, userName }) => {
+const Dashboard: React.FC<DashboardProps> = ({ medications, logs, moods, snoozedItems, onDeleteMedication, onLogMedication, onRefillMedication, onEditMedication, onUpdateMedication, onLogMood, onSnoozeMedication, userName }) => {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const todayLogs = logs.filter(log => log.dateStr === todayStr);
   const todaysMood = moods.find(m => m.dateStr === todayStr);
@@ -131,6 +132,7 @@ const Dashboard: React.FC<DashboardProps> = ({ medications, logs, moods, snoozed
                 onLog={onLogMedication}
                 onRefill={onRefillMedication}
                 onEdit={onEditMedication}
+                onUpdate={onUpdateMedication}
                 onSnooze={onSnoozeMedication}
                 todayLogs={todayLogs.filter(log => log.medicationId === med.id)}
                 snoozeUntil={snoozeEntry ? snoozeEntry.wakeUpTime : undefined}
