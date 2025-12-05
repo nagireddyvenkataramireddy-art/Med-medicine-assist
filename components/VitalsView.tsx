@@ -10,9 +10,10 @@ interface VitalsViewProps {
   vitals: VitalEntry[];
   onAddVital: (vital: VitalEntry) => void;
   watchConnected?: boolean;
+  onSyncWatch?: () => Promise<number | null>;
 }
 
-const VitalsView: React.FC<VitalsViewProps> = ({ vitals, onAddVital, watchConnected = false }) => {
+const VitalsView: React.FC<VitalsViewProps> = ({ vitals, onAddVital, watchConnected = false, onSyncWatch }) => {
   const [activeType, setActiveType] = useState<VitalType>('BLOOD_PRESSURE');
   const [value1, setValue1] = useState(''); // Systolic or single value
   const [value2, setValue2] = useState(''); // Diastolic (for BP)
@@ -59,32 +60,39 @@ const VitalsView: React.FC<VitalsViewProps> = ({ vitals, onAddVital, watchConnec
     setIsAdding(false);
   };
 
-  const handleSyncWatch = () => {
+  const handleSyncWatch = async () => {
     if (!watchConnected) {
       alert("Please connect your Fire-Boltt watch in Settings first.");
       return;
     }
     
+    if (!onSyncWatch) return;
+
     setIsSyncing(true);
     
-    // Simulate syncing delay
-    setTimeout(() => {
-      // Mock data from watch
-      const mockHR = Math.floor(Math.random() * (90 - 65 + 1) + 65);
+    try {
+      const heartRate = await onSyncWatch();
       
-      const newVital: VitalEntry = {
-        id: uuidv4(),
-        type: 'HEART_RATE',
-        value: mockHR.toString(),
-        unit: 'bpm',
-        dateStr: format(new Date(), 'yyyy-MM-dd'),
-        timestamp: Date.now()
-      };
-      
-      onAddVital(newVital);
+      if (heartRate) {
+        const newVital: VitalEntry = {
+          id: uuidv4(),
+          type: 'HEART_RATE',
+          value: heartRate.toString(),
+          unit: 'bpm',
+          dateStr: format(new Date(), 'yyyy-MM-dd'),
+          timestamp: Date.now()
+        };
+        
+        onAddVital(newVital);
+        alert(`Synced: Heart Rate ${heartRate} bpm from Fire-Boltt`);
+      } else {
+        alert("Could not read heart rate. Make sure watch is measuring or screen is on.");
+      }
+    } catch (e) {
+      alert("Sync failed. Check connection.");
+    } finally {
       setIsSyncing(false);
-      alert(`Synced: Heart Rate ${mockHR} bpm from Fire-Boltt`);
-    }, 2000);
+    }
   };
 
   const chartData = useMemo(() => {

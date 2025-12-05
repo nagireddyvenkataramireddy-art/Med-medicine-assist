@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Medication, LogEntry, FrequencyType, VitalEntry, Appointment, MoodEntry, MoodType, SnoozeEntry, Profile } from './types';
+import { Medication, LogEntry, FrequencyType, VitalEntry, Appointment, MoodEntry, MoodType, SnoozeEntry, Profile, WellnessGoal } from './types';
 import Dashboard from './components/Dashboard';
 import AddMedicationModal from './components/AddMedicationModal';
 import HistoryView from './components/HistoryView';
@@ -9,9 +10,10 @@ import AssistantView from './components/AssistantView';
 import SettingsModal from './components/SettingsModal';
 import OnboardingModal from './components/OnboardingModal';
 import { playNotificationSound, initAudio } from './services/audioService';
-import { Plus, Bell, BellRing, Home, Calendar, Activity, MessageSquareMore, HeartHandshake, UserCircle, Pill, Sparkles, ChevronDown, Users } from 'lucide-react';
+import { Plus, Bell, BellRing, Home, Calendar, Activity, MessageSquareMore, HeartHandshake, UserCircle, Pill, Sparkles, ChevronDown, Users, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { format } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'home' | 'history' | 'vitals' | 'care' | 'chat'>('home');
@@ -41,8 +43,13 @@ const App: React.FC = () => {
   const [vitals, setVitals] = useState<VitalEntry[]>(() => safeParse('medimind_vitals', []));
   const [appointments, setAppointments] = useState<Appointment[]>(() => safeParse('medimind_appointments', []));
   const [moods, setMoods] = useState<MoodEntry[]>(() => safeParse('medimind_moods', []));
+  const [wellnessGoals, setWellnessGoals] = useState<WellnessGoal[]>(() => safeParse('medimind_goals', []));
   
   const [snoozedItems, setSnoozedItems] = useState<SnoozeEntry[]>([]);
+  
+  // Bluetooth State
+  const [bluetoothDevice, setBluetoothDevice] = useState<any>(null); // Type 'any' to avoid strict WebBluetooth types issues in some environments
+  const [bluetoothServer, setBluetoothServer] = useState<any>(null);
   const [fireBolttConnected, setFireBolttConnected] = useState(false);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -51,20 +58,14 @@ const App: React.FC = () => {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
   
+  // In-App Toast State
+  const [toast, setToast] = useState<{title: string, message: string} | null>(null);
+  
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     'Notification' in window ? Notification.permission : 'default'
   );
 
   const lastCheckedMinuteRef = useRef<string>('');
-
-  // Service Worker Registration
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('Service Worker Registered', reg))
-        .catch(err => console.error('Service Worker Error', err));
-    }
-  }, []);
 
   // Check for first time onboarding
   useEffect(() => {
@@ -72,6 +73,21 @@ const App: React.FC = () => {
     if (!hasOnboarded) {
       setIsOnboardingOpen(true);
     }
+  }, []);
+
+  // Initialize Audio Context on first interaction to allow sounds to play later
+  useEffect(() => {
+    const handleInteraction = () => {
+      initAudio();
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('touchstart', handleInteraction);
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
   }, []);
 
   const handleFinishOnboarding = () => {
@@ -89,6 +105,18 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('medimind_vitals', JSON.stringify(vitals)); }, [vitals]);
   useEffect(() => { localStorage.setItem('medimind_appointments', JSON.stringify(appointments)); }, [appointments]);
   useEffect(() => { localStorage.setItem('medimind_moods', JSON.stringify(moods)); }, [moods]);
+  useEffect(() => { localStorage.setItem('medimind_goals', JSON.stringify(wellnessGoals)); }, [wellnessGoals]);
+
+  // Check and reset daily goals
+  useEffect(() => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    setWellnessGoals(prev => prev.map(g => {
+      if (g.dateStr !== today) {
+        return { ...g, current: 0, dateStr: today };
+      }
+      return g;
+    }));
+  }, []);
 
   // Derived filtered data for the current profile
   const currentMedications = useMemo(() => 
@@ -111,36 +139,59 @@ const App: React.FC = () => {
     moods.filter(m => m.profileId === activeProfileId || (!m.profileId && activeProfileId === 'default')), 
   [moods, activeProfileId]);
 
-  const lowStockCount = currentMedications.filter(m => m.currentStock <= m.lowStockThreshold).length;
   const activeProfile = profiles.find(p => p.id === activeProfileId) || profiles[0];
 
   const triggerNotification = async (title: string, body: string, sound: any) => {
-    // 1. Try Service Worker Notification (Best for Android PWA)
+    // Play sound immediately to ensure it alerts even if visual notification fails/delays
+    playNotificationSound(sound);
+    
+    // Always show in-app toast as reliable backup
+    setToast({ title, message: body });
+    // Auto hide after 5 seconds
+    setTimeout(() => setToast(null), 5000);
+
+    const iconUrl = "https://cdn-icons-png.flaticon.com/512/3063/3063822.png"; 
+    
+    // Try Service Worker first for better mobile support (required for Android Chrome)
+    let swRegistration = null;
     if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg) {
-        reg.showNotification(title, {
-          body: body,
-          icon: '/icon.png',
-          badge: '/icon.png',
-          vibrate: [200, 100, 200, 100, 400],
-          tag: 'med-reminder',
-          renotify: true,
-          requireInteraction: true,
-          data: { url: '/' }
-        } as any);
-        playNotificationSound(sound);
-        return;
-      }
+       try {
+         // Wrap in try-catch to prevent origin mismatch errors in preview environments
+         swRegistration = await navigator.serviceWorker.getRegistration();
+       } catch (error) {
+         console.warn("Could not get SW registration (likely origin mismatch in preview):", error);
+       }
     }
 
-    // 2. Fallback to standard Notification API
-    new Notification(title, {
-      body: body,
-      icon: '/icon.png',
-      requireInteraction: true
-    });
-    playNotificationSound(sound);
+    if (swRegistration && swRegistration.active) {
+       try {
+         await swRegistration.showNotification(title, {
+            body: body,
+            icon: iconUrl,
+            vibrate: [200, 100, 200],
+            requireInteraction: true,
+            tag: 'medication-reminder'
+         } as any);
+         return;
+       } catch (e) {
+         console.error("SW Notification failed, falling back to new Notification()", e);
+       }
+    }
+
+    // Fallback to standard Notification API
+    try {
+      if (Notification.permission === 'granted') {
+        new Notification(title, {
+          body: body,
+          icon: iconUrl,
+          requireInteraction: true,
+          vibrate: [200, 100, 200]
+        } as any);
+      }
+    } catch (e) {
+      // This catches the "Illegal constructor" error on Android
+      console.warn("Notification API failed (expected on Android if SW failed):", e);
+    }
   };
 
   const handleTestNotification = () => {
@@ -414,10 +465,112 @@ const App: React.FC = () => {
   const handleUpdateProfile = (profile: Profile) => {
     setProfiles(prev => prev.map(p => p.id === profile.id ? profile : p));
   };
-  
-  const toggleFireBoltt = (enabled: boolean) => {
-    setFireBolttConnected(enabled);
+
+  // Wellness Goals Handlers
+  const handleAddGoal = (goal: WellnessGoal) => {
+    setWellnessGoals(prev => [...prev, goal]);
+  };
+
+  const handleUpdateGoalProgress = (id: string, increment: number) => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    setWellnessGoals(prev => prev.map(g => {
+      if (g.id === id) {
+        const newCurrent = Math.max(0, g.current + increment);
+        return { ...g, current: newCurrent, dateStr: today };
+      }
+      return g;
+    }));
+  };
+
+  const handleDeleteGoal = (id: string) => {
+      setWellnessGoals(prev => prev.filter(g => g.id !== id));
   }
+
+  // BLUETOOTH INTEGRATION
+  const handleConnectWatch = async () => {
+    try {
+      const nav = navigator as any;
+      if (!nav.bluetooth) {
+        alert("Web Bluetooth is not supported in this browser. Please use Chrome on Android/Desktop.");
+        return;
+      }
+
+      // Check availability first
+      const isAvailable = await nav.bluetooth.getAvailability();
+      if (!isAvailable) {
+        alert("Bluetooth is not available on this device or is disabled.");
+        return;
+      }
+
+      const device = await nav.bluetooth.requestDevice({
+        filters: [{ services: ['heart_rate'] }],
+        optionalServices: ['battery_service']
+      });
+
+      const server = await device.gatt.connect();
+      setBluetoothDevice(device);
+      setBluetoothServer(server);
+      setFireBolttConnected(true);
+      
+      device.addEventListener('gattserverdisconnected', () => {
+         setFireBolttConnected(false);
+         setBluetoothDevice(null);
+         setBluetoothServer(null);
+         alert("Watch disconnected.");
+      });
+
+    } catch (error: any) {
+      console.error("Bluetooth connection failed:", error);
+      if (error.name === 'NotFoundError') {
+        // User cancelled the picker
+        return;
+      } else if (error.name === 'SecurityError') {
+        alert("Bluetooth security error. Ensure you are using HTTPS.");
+      } else {
+        alert(`Could not connect to watch: ${error.message || 'Unknown error'}`);
+      }
+    }
+  };
+
+  const handleReadWatchData = async (): Promise<number | null> => {
+    if (!bluetoothServer || !fireBolttConnected) return null;
+
+    try {
+      const service = await bluetoothServer.getPrimaryService('heart_rate');
+      const characteristic = await service.getCharacteristic('heart_rate_measurement');
+      
+      // Setup a one-time listener for the value
+      return new Promise((resolve) => {
+         const handler = (event: any) => {
+            const value = event.target.value;
+            const flags = value.getUint8(0);
+            const rate16Bits = flags & 0x1;
+            let heartRate = 0;
+            if (rate16Bits) {
+              heartRate = value.getUint16(1, true); // 16-bit
+            } else {
+              heartRate = value.getUint8(1); // 8-bit
+            }
+            
+            characteristic.stopNotifications();
+            characteristic.removeEventListener('characteristicvaluechanged', handler);
+            resolve(heartRate);
+         };
+
+         characteristic.startNotifications().then(() => {
+            characteristic.addEventListener('characteristicvaluechanged', handler);
+         });
+         
+         // Timeout if no data
+         setTimeout(() => {
+           resolve(null);
+         }, 5000);
+      });
+    } catch (error) {
+      console.error("Error reading HR:", error);
+      return null;
+    }
+  };
 
   // Safety fallback for rendering
   if (!activeProfile) return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading Profile...</div>;
@@ -518,16 +671,27 @@ const App: React.FC = () => {
             onLogMood={handleLogMood}
             onSnoozeMedication={handleSnoozeMedication}
             userName={activeProfile.name}
+            wellnessGoals={wellnessGoals}
+            onAddGoal={handleAddGoal}
+            onUpdateGoalProgress={handleUpdateGoalProgress}
+            onDeleteGoal={handleDeleteGoal}
           />
         )}
         {activeTab === 'history' && (
-          <HistoryView medications={currentMedications} logs={currentLogs} vitals={currentVitals} moods={currentMoods} />
+          <HistoryView 
+            medications={currentMedications} 
+            logs={currentLogs} 
+            vitals={currentVitals} 
+            moods={currentMoods} 
+            userName={activeProfile.name}
+          />
         )}
         {activeTab === 'vitals' && (
           <VitalsView 
             vitals={currentVitals} 
             onAddVital={handleAddVital} 
             watchConnected={fireBolttConnected}
+            onSyncWatch={handleReadWatchData}
           />
         )}
         {activeTab === 'care' && (
@@ -564,7 +728,7 @@ const App: React.FC = () => {
                 setEditingMedication(null);
                 setIsAddModalOpen(true);
               }}
-              className="bg-gradient-to-tr from-slate-900 to-slate-700 hover:scale-105 active:scale-95 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-slate-900/30 transition-all ring-4 ring-[#f1f5f9]"
+              className="bg-gradient-to-tr from-slate-900 to-slate-700 hover:scale-110 active:scale-95 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-slate-900/30 transition-all ring-4 ring-[#f1f5f9]"
             >
               <Plus size={28} strokeWidth={3} />
             </button>
@@ -600,7 +764,8 @@ const App: React.FC = () => {
         onAddProfile={handleAddProfile}
         onUpdateProfile={handleUpdateProfile}
         fireBolttConnected={fireBolttConnected}
-        toggleFireBoltt={toggleFireBoltt}
+        onConnectWatch={handleConnectWatch}
+        connectedDeviceName={bluetoothDevice?.name}
         onTestNotification={handleTestNotification}
       />
 
@@ -609,6 +774,29 @@ const App: React.FC = () => {
         onClose={handleFinishOnboarding}
         userName={activeProfile.name}
       />
+
+      {/* In-App Toast Notification Fallback */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -50, x: '-50%' }}
+            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] w-[90%] max-w-sm bg-white/95 backdrop-blur-md border-l-4 border-blue-500 rounded-lg shadow-2xl p-4 flex items-start gap-3 ring-1 ring-black/5"
+          >
+            <div className="bg-blue-100 p-2 rounded-full text-blue-600 flex-shrink-0">
+              <Bell size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-bold text-slate-800 text-sm truncate">{toast.title}</h4>
+              <p className="text-slate-600 text-xs mt-1 leading-snug">{toast.message}</p>
+            </div>
+            <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 p-1">
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

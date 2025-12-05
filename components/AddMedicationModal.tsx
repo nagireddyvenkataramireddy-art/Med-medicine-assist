@@ -576,8 +576,8 @@ const AddMedicationModal: React.FC<AddMedicationModalProps> = ({ isOpen, onClose
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Icon</label>
-                    <div className="flex gap-2">
-                       {ICONS.slice(0, 5).map(i => (
+                    <div className="flex flex-wrap gap-2">
+                       {ICONS.map(i => (
                          <button
                            key={i.name}
                            type="button"

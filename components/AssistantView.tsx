@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { createMedicalChat } from '../services/geminiService';
 import { Medication } from '../types';
-import { Send, Bot, User, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Mic, Radio } from 'lucide-react';
 import { Chat } from '@google/genai';
+import LiveVoiceMode from './LiveVoiceMode';
 
 interface AssistantViewProps {
   medications: Medication[];
@@ -19,6 +21,8 @@ const AssistantView: React.FC<AssistantViewProps> = ({ medications }) => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  
   const chatSessionRef = useRef<Chat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -58,17 +62,31 @@ const AssistantView: React.FC<AssistantViewProps> = ({ medications }) => {
     }
   };
 
+  if (isLiveMode) {
+    return <LiveVoiceMode onClose={() => setIsLiveMode(false)} />;
+  }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-140px)] bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
       {/* Header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white flex items-center gap-3">
-        <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm">
-          <Sparkles size={20} className="text-yellow-300" />
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="bg-white/20 p-2 rounded-full backdrop-blur-sm">
+            <Sparkles size={20} className="text-yellow-300" />
+          </div>
+          <div>
+            <h2 className="font-bold text-lg leading-tight">MediMind Assistant</h2>
+            <p className="text-indigo-100 text-xs">Powered by Gemini AI</p>
+          </div>
         </div>
-        <div>
-          <h2 className="font-bold text-lg leading-tight">MediMind Assistant</h2>
-          <p className="text-indigo-100 text-xs">Powered by Gemini AI</p>
-        </div>
+        
+        <button 
+          onClick={() => setIsLiveMode(true)}
+          className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-md px-3 py-1.5 rounded-full transition-colors text-xs font-bold border border-white/20"
+        >
+           <Radio size={14} className="animate-pulse text-red-300" />
+           Live Call
+        </button>
       </div>
 
       {/* Messages Area */}

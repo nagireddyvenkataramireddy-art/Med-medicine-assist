@@ -275,14 +275,17 @@ export const generateHealthReport = async (
     - Recent Mood/Symptoms: ${recentMoods || 'None recorded'}
 
     Task:
-    Write a structured, professional report.
-    Use the following sections (use Markdown headers like ##):
-    1. **Patient Summary**: Brief overview of status and adherence.
-    2. **Medication Analysis**: Comments on consistency and medication list.
-    3. **Vitals & Wellness**: Analysis of recorded vitals/moods (if any).
-    4. **Recommendations**: 2-3 General health tips or things to discuss with the doctor based on the data.
+    Write a structured, professional report in HTML format (NOT Markdown).
+    The report should be clean, readable, and ready to print.
     
-    Keep the tone clinical but easy to read.
+    Structure:
+    1. <h2>Patient Summary</h2>: Brief overview of status and adherence.
+    2. <h2>Medication Analysis</h2>: Comments on consistency and medication list.
+    3. <h2>Vitals & Wellbeing</h2>: Analysis of recorded vitals/moods (if any).
+    4. <h2>Recommendations</h2>: 2-3 General health tips or things to discuss with the doctor based on the data.
+    
+    Use <p> for paragraphs, <ul><li> for lists, and <strong> for emphasis.
+    Do not use <html>, <head>, or <body> tags, just the content.
   `;
 
   try {

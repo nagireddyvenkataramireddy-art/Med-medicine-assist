@@ -1,5 +1,5 @@
 {
-  "name": "copy-of-medimind",
+  "name": "medimind",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -15,7 +15,8 @@
     "@google/genai": "^1.30.0",
     "recharts": "^3.5.1",
     "lucide-react": "^0.555.0",
-    "date-fns": "^4.1.0"
+    "date-fns": "^4.1.0",
+    "framer-motion": "^11.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

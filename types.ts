@@ -1,4 +1,5 @@
 
+
 export enum FrequencyType {
   DAILY = 'DAILY',
   WEEKLY = 'WEEKLY',
@@ -143,4 +144,14 @@ export interface PlaceResult {
 export interface PharmacySearchResponse {
   text: string;
   places: PlaceResult[];
+}
+
+export interface WellnessGoal {
+  id: string;
+  title: string;
+  target: number;
+  current: number;
+  unit: string;
+  icon: 'water' | 'exercise' | 'sleep' | 'mindfulness' | 'steps' | 'food';
+  dateStr: string; // Last updated date to handle resets
 }

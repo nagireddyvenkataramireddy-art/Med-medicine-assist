@@ -1,8 +1,10 @@
+
 import React, { useState } from 'react';
 import { Medication, FrequencyType, DrugInfo, LogEntry } from '../types';
-import { Pill, Clock, Calendar, Info, Check, X, AlertCircle, Database, PlusCircle, Pencil, Hourglass, Bell, AlarmClock, Settings, Save, RefreshCw } from 'lucide-react';
+import { Pill, Clock, Calendar, Info, Check, X, AlertCircle, Database, PlusCircle, Pencil, Hourglass, Bell, AlarmClock, Settings, Save, RefreshCw, Tablets, Package, Syringe, Droplet, SprayCan, Activity } from 'lucide-react';
 import { getDrugInfo } from '../services/geminiService';
 import { format, differenceInDays } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface MedicationCardProps {
   medication: Medication;
@@ -117,7 +119,26 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
   
   let daysToExpiry = null;
   if (medication.expiryDate) {
-    daysToExpiry = differenceInDays(new Date(medication.expiryDate), new Date());
+    // Normalize to start of day for accurate day diff
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expDate = new Date(medication.expiryDate + 'T00:00');
+    daysToExpiry = differenceInDays(expDate, today);
+  }
+
+  // Determine Expiry Style
+  const isExpired = daysToExpiry !== null && daysToExpiry < 0;
+  const isExpiringSoon = daysToExpiry !== null && daysToExpiry >= 0 && daysToExpiry <= 30;
+
+  let expiryColorClass = "";
+  let expiryIconClass = "text-slate-400";
+
+  if (isExpired) {
+    expiryColorClass = "text-red-600 font-bold";
+    expiryIconClass = "text-red-500";
+  } else if (isExpiringSoon) {
+    expiryColorClass = "text-orange-600 font-bold";
+    expiryIconClass = "text-orange-500";
   }
 
   // Sort times for display
@@ -139,21 +160,25 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-full ${medication.color === 'blue' ? 'bg-blue-100 text-blue-600' : 'bg-teal-100 text-teal-600'}`}>
             {medication.icon === 'pill' && <Pill size={24} />}
-            {medication.icon === 'tablet' && <div className="w-6 h-6 flex items-center justify-center font-bold text-xs border-2 border-current rounded-sm">T</div>}
-            {medication.icon === 'bottle' && <Database size={24} />}
-            {medication.icon === 'syringe' && <div className="rotate-45"><Pill size={24} className="opacity-50" /></div>} 
-            {!['pill', 'tablet', 'bottle', 'syringe'].includes(medication.icon) && <Pill size={24} />}
+            {medication.icon === 'tablet' && <Tablets size={24} />}
+            {medication.icon === 'bottle' && <Package size={24} />}
+            {medication.icon === 'syringe' && <Syringe size={24} />}
+            {medication.icon === 'droplet' && <Droplet size={24} />}
+            {medication.icon === 'inhaler' && <SprayCan size={24} />}
+            {medication.icon === 'other' && <Activity size={24} />}
+            {!['pill', 'tablet', 'bottle', 'syringe', 'droplet', 'inhaler', 'other'].includes(medication.icon) && <Pill size={24} />}
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-lg text-slate-800">{medication.name}</h3>
               {/* Visual Indicator for Stock Level */}
               {isLowStock ? (
-                <AlertCircle 
-                  size={16} 
-                  className="text-red-500 fill-red-50" 
-                  title={`Low Stock: ${medication.currentStock} units remaining`}
-                />
+                <div title={`Low Stock: ${medication.currentStock} units remaining`}>
+                  <AlertCircle 
+                    size={16} 
+                    className="text-red-500 fill-red-50" 
+                  />
+                </div>
               ) : (
                 <div 
                   className={`w-2.5 h-2.5 rounded-full ${stockStatusColor} ring-2 ring-white shadow-sm`} 
@@ -189,78 +214,96 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
         </div>
       </div>
 
-      {showInfo && (
-        <div className="mb-4 bg-slate-50 p-3 rounded-lg text-sm border border-slate-200 animate-fadeIn">
-          {loadingInfo ? (
-            <div className="flex items-center gap-2 text-slate-500">
-              <span className="animate-spin">⏳</span> Asking Gemini...
-            </div>
-          ) : info ? (
-            <div className="space-y-2">
-              <p className="font-medium text-slate-700">{info.description}</p>
-              <div>
-                <span className="font-bold text-xs uppercase text-slate-400">Side Effects</span>
-                <p className="text-slate-600">{info.sideEffects.join(", ")}</p>
-              </div>
-              <div className="flex items-start gap-2 text-amber-600 bg-amber-50 p-2 rounded">
-                <AlertCircle size={14} className="mt-0.5" />
-                <span>{info.tips}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-red-400">Could not retrieve info.</p>
-          )}
-        </div>
-      )}
-
-      {showSettings && (
-        <div className="mb-4 bg-white p-4 rounded-xl text-sm border-2 border-blue-100 shadow-sm animate-fadeIn">
-          <div className="flex items-center justify-between mb-4">
-             <h4 className="font-bold text-slate-700 flex items-center gap-2">
-               <Settings size={16} className="text-blue-500" />
-               Refill Reminder Settings
-             </h4>
-             <button onClick={toggleSettings} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-400 mb-1">Current Stock</label>
-              <input 
-                type="number" 
-                value={editStock}
-                onChange={(e) => setEditStock(Number(e.target.value))}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 mb-1">Alert Below</label>
-              <input 
-                type="number" 
-                value={editThreshold}
-                onChange={(e) => setEditThreshold(Number(e.target.value))}
-                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700"
-              />
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2 mb-4 text-xs text-slate-500 bg-slate-50 p-2 rounded">
-            <Info size={14} />
-            <span>
-              {dailyUsage > 0 
-                ? `At current dose, stock alert will trigger in ~${Math.floor((editStock - editThreshold) / dailyUsage)} days.` 
-                : 'Stock alerts will appear when your supply drops below the limit.'}
-            </span>
-          </div>
-
-          <button 
-            onClick={handleSaveSettings}
-            className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center justify-center gap-2"
+      <AnimatePresence>
+        {showInfo && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
           >
-            <Save size={16} /> Save Settings
-          </button>
-        </div>
-      )}
+            <div className="mb-4 bg-slate-50 p-3 rounded-lg text-sm border border-slate-200">
+              {loadingInfo ? (
+                <div className="flex items-center gap-2 text-slate-500">
+                  <span className="animate-spin">⏳</span> Asking Gemini...
+                </div>
+              ) : info ? (
+                <div className="space-y-2">
+                  <p className="font-medium text-slate-700">{info.description}</p>
+                  <div>
+                    <span className="font-bold text-xs uppercase text-slate-400">Side Effects</span>
+                    <p className="text-slate-600">{info.sideEffects.join(", ")}</p>
+                  </div>
+                  <div className="flex items-start gap-2 text-amber-600 bg-amber-50 p-2 rounded">
+                    <AlertCircle size={14} className="mt-0.5" />
+                    <span>{info.tips}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-red-400">Could not retrieve info.</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="mb-4 bg-white p-4 rounded-xl text-sm border-2 border-blue-100 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                 <h4 className="font-bold text-slate-700 flex items-center gap-2">
+                   <Settings size={16} className="text-blue-500" />
+                   Refill Reminder Settings
+                 </h4>
+                 <button onClick={toggleSettings} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Current Stock</label>
+                  <input 
+                    type="number" 
+                    value={editStock}
+                    onChange={(e) => setEditStock(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 mb-1">Alert Below</label>
+                  <input 
+                    type="number" 
+                    value={editThreshold}
+                    onChange={(e) => setEditThreshold(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2 mb-4 text-xs text-slate-500 bg-slate-50 p-2 rounded">
+                <Info size={14} />
+                <span>
+                  {dailyUsage > 0 
+                    ? `At current dose, stock alert will trigger in ~${Math.floor((editStock - editThreshold) / dailyUsage)} days.` 
+                    : 'Stock alerts will appear when your supply drops below the limit.'}
+                </span>
+              </div>
+
+              <button 
+                onClick={handleSaveSettings}
+                className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                <Save size={16} /> Save Settings
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Stock Indicator */}
       <div className={`rounded-lg p-3 mb-3 border ${isLowStock ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100'}`}>
@@ -291,9 +334,14 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
              </div>
            )}
            {medication.expiryDate && (
-             <div className={`flex items-center gap-1 ${daysToExpiry !== null && daysToExpiry < 30 ? 'text-orange-600 font-bold' : ''}`}>
-               <Calendar size={12} className={daysToExpiry !== null && daysToExpiry < 30 ? 'text-orange-500' : 'text-slate-400'} />
-               <span>Exp: {format(new Date(medication.expiryDate + 'T00:00'), 'MM/yy')}</span>
+             <div className={`flex items-center gap-1 ${expiryColorClass}`} title={`Expires on ${medication.expiryDate}`}>
+               <Calendar size={12} className={expiryIconClass} />
+               <span>
+                  {isExpiringSoon || isExpired
+                    ? (isExpired ? 'Expired' : `Exp in ${daysToExpiry} days`)
+                    : `Exp: ${format(new Date(medication.expiryDate + 'T00:00'), 'MM/yy')}`
+                  }
+               </span>
              </div>
            )}
            {medication.refillDate && (
@@ -349,50 +397,74 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
                         )}
                       </div>
                       
-                      {isLogged ? (
-                        <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${status === 'TAKEN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {status === 'TAKEN' ? <Check size={12}/> : <X size={12}/>}
-                          {status}
-                        </div>
-                      ) : (
-                        <div className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                          <button 
-                            type="button"
-                            onClick={() => setShowSnoozeOptions(showSnoozeOptions === time ? null : time)}
-                            className={`p-1.5 rounded-md transition-colors ${showSnoozeOptions === time ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
-                            title="Snooze"
+                      <AnimatePresence mode="wait">
+                        {isLogged ? (
+                          <motion.div
+                            key="logged"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{ duration: 0.2 }}
                           >
-                            <AlarmClock size={18} />
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={() => onLog(medication.id, 'SKIPPED', time)}
-                            className="p-1.5 text-slate-400 hover:bg-red-100 hover:text-red-600 rounded-md transition-colors"
-                            title="Skip"
+                            <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 ${status === 'TAKEN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {status === 'TAKEN' ? <Check size={12}/> : <X size={12}/>}
+                              {status}
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="actions"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{ duration: 0.2 }}
+                            className="flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                           >
-                            <X size={18} />
-                          </button>
-                          <button 
-                            type="button"
-                            onClick={() => onLog(medication.id, 'TAKEN', time)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md transition-colors"
-                            title="Take"
-                          >
-                            <Check size={18} />
-                          </button>
-                        </div>
-                      )}
+                            <button 
+                              type="button"
+                              onClick={() => setShowSnoozeOptions(showSnoozeOptions === time ? null : time)}
+                              className={`p-1.5 rounded-md transition-colors ${showSnoozeOptions === time ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'}`}
+                              title="Snooze"
+                            >
+                              <AlarmClock size={18} />
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => onLog(medication.id, 'SKIPPED', time)}
+                              className="p-1.5 text-slate-400 hover:bg-red-100 hover:text-red-600 rounded-md transition-colors"
+                              title="Skip"
+                            >
+                              <X size={18} />
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={() => onLog(medication.id, 'TAKEN', time)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md transition-colors"
+                              title="Take"
+                            >
+                              <Check size={18} />
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                     {/* Snooze Options */}
-                    {showSnoozeOptions === time && !isLogged && (
-                      <div className="flex gap-1 justify-end animate-fadeIn">
-                         <span className="text-xs text-slate-400 self-center mr-1">Snooze for:</span>
-                         <button onClick={() => handleSnoozeClick(time, 5)} className="px-2 py-1 bg-white border border-slate-200 text-xs rounded hover:bg-indigo-50 text-slate-600">5m</button>
-                         <button onClick={() => handleSnoozeClick(time, 10)} className="px-2 py-1 bg-white border border-slate-200 text-xs rounded hover:bg-indigo-50 text-slate-600">10m</button>
-                         <button onClick={() => handleSnoozeClick(time, 15)} className="px-2 py-1 bg-white border border-slate-200 text-xs rounded hover:bg-indigo-50 text-slate-600">15m</button>
-                      </div>
-                    )}
+                    <AnimatePresence>
+                      {showSnoozeOptions === time && !isLogged && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="flex gap-1 justify-end overflow-hidden"
+                        >
+                           <span className="text-xs text-slate-400 self-center mr-1">Snooze for:</span>
+                           <button onClick={() => handleSnoozeClick(time, 5)} className="px-2 py-1 bg-white border border-slate-200 text-xs rounded hover:bg-indigo-50 text-slate-600">5m</button>
+                           <button onClick={() => handleSnoozeClick(time, 10)} className="px-2 py-1 bg-white border border-slate-200 text-xs rounded hover:bg-indigo-50 text-slate-600">10m</button>
+                           <button onClick={() => handleSnoozeClick(time, 15)} className="px-2 py-1 bg-white border border-slate-200 text-xs rounded hover:bg-indigo-50 text-slate-600">15m</button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 );
               })}
@@ -422,3 +494,4 @@ const MedicationCard: React.FC<MedicationCardProps> = ({ medication, onDelete, o
 };
 
 export default MedicationCard;
+    
